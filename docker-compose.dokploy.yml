@@ -1,32 +1,20 @@
-# MAC central auth service — full stack.
+# Deployment compose for the SHARED Oracle box (Docker Swarm + Dokploy + Traefik).
 #
-# One command to run everything:  docker compose up -d
-# Services: caddy (TLS reverse proxy) -> auth (Node/Better Auth) -> postgres, plus a
-# nightly pg_dump backup sidecar. Fill .env first (see .env.example).
-
+# On that host, Traefik (run by Dokploy) already owns ports 80/443 and terminates
+# TLS via Let's Encrypt. So this stack has NO Caddy and publishes NO host ports —
+# Traefik reaches the auth container over the shared `dokploy-network` and routes
+# auth.monashcoding.com -> auth:3000.
+#
+# Deploy via the Dokploy dashboard as a "Compose" service pointing at this repo with
+# this file. Add the domain (auth.monashcoding.com, container port 3000, HTTPS/Let's
+# Encrypt) in Dokploy's Domains tab — Dokploy writes the Traefik labels for you.
+# See DEPLOY-dokploy.md.
 services:
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    environment:
-      ACME_EMAIL: ${ACME_EMAIL}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - auth
-
   auth:
     build:
       context: ./auth
     restart: unless-stopped
     environment:
-      # Assembled DB URL for the postgres.js driver.
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
@@ -39,6 +27,9 @@ services:
       PORT: "3000"
     expose:
       - "3000"
+    networks:
+      - dokploy-network   # Traefik lives here; this is how it reaches us.
+      - internal          # private link to postgres.
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,6 +43,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - pg_data:/var/lib/postgresql/data
+    networks:
+      - internal
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -60,8 +53,6 @@ services:
       start_period: 10s
 
   backup:
-    # Same postgres:16 image (no third-party backup image). Runs an internal loop
-    # that pg_dumps nightly with rotation — no host cron.
     image: postgres:16
     restart: unless-stopped
     environment:
@@ -69,17 +60,23 @@ services:
       PGUSER: ${POSTGRES_USER}
       PGPASSWORD: ${POSTGRES_PASSWORD}
       PGDATABASE: ${POSTGRES_DB}
-      # Keep this many daily dumps.
       BACKUP_KEEP_DAYS: "14"
     volumes:
       - ./backup/backup.sh:/usr/local/bin/backup.sh:ro
       - ./backups:/backups
+    networks:
+      - internal
     entrypoint: ["/bin/sh", "/usr/local/bin/backup.sh"]
     depends_on:
       postgres:
         condition: service_healthy
 
+networks:
+  # Shared Dokploy/Traefik network — already exists on the host.
+  dokploy-network:
+    external: true
+  # Private network for auth <-> postgres <-> backup.
+  internal:
+
 volumes:
   pg_data:
-  caddy_data:
-  caddy_config:
