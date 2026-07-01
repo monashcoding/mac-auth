@@ -1,0 +1,21 @@
+# Secrets — never commit the real env file.
+.env
+*.env
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Build output
+auth/dist/
+dist/
+
+# Generated Drizzle migrations (generated during the Docker build).
+auth/drizzle/
+
+# Database backups produced at runtime.
+backups/
+
+# Logs / OS cruft
+*.log
+.DS_Store
