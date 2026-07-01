@@ -12,7 +12,7 @@ import { auth } from "./auth.js";
 const app = express();
 const port = Number(process.env.PORT ?? 3000);
 
-// Behind Caddy (TLS-terminating reverse proxy): trust the proxy so secure cookies
+// Behind a TLS-terminating reverse proxy (Traefik): trust the proxy so secure cookies
 // and the correct protocol/host are honoured.
 app.set("trust proxy", 1);
 
