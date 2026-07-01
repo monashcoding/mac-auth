@@ -1,0 +1,30 @@
+{
+  "name": "mac-auth",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "auth:generate": "better-auth generate --config src/auth.ts --output src/schema.ts -y"
+  },
+  "dependencies": {
+    "better-auth": "^1.6.9",
+    "drizzle-orm": "^0.45.2",
+    "express": "^4.21.2",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.0",
+    "drizzle-kit": "^0.31.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
