@@ -1,0 +1,10 @@
+{
+  "name": "mac-auth-verify-example",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone JWKS verifier apps copy into their codebase.",
+  "dependencies": {
+    "jose": "^5.9.6"
+  }
+}
