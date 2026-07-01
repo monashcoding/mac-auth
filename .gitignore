@@ -3,6 +3,10 @@
 *.env
 !.env.example
 
+# Local-only dev override (exposes port 3000, points at localhost — must never
+# reach the shared server).
+docker-compose.override.yml
+
 # Dependencies
 node_modules/
 

@@ -1,0 +1,82 @@
+# Deployment compose for the SHARED Oracle box (Docker Swarm + Dokploy + Traefik).
+#
+# On that host, Traefik (run by Dokploy) already owns ports 80/443 and terminates
+# TLS via Let's Encrypt. So this stack has NO Caddy and publishes NO host ports —
+# Traefik reaches the auth container over the shared `dokploy-network` and routes
+# auth.monashcoding.com -> auth:3000.
+#
+# Deploy via the Dokploy dashboard as a "Compose" service pointing at this repo with
+# this file. Add the domain (auth.monashcoding.com, container port 3000, HTTPS/Let's
+# Encrypt) in Dokploy's Domains tab — Dokploy writes the Traefik labels for you.
+# See DEPLOY-dokploy.md.
+services:
+  auth:
+    build:
+      context: ./auth
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID}
+      MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET}
+      TRUSTED_ORIGINS: ${TRUSTED_ORIGINS}
+      JWT_AUDIENCE: ${JWT_AUDIENCE}
+      PORT: "3000"
+    expose:
+      - "3000"
+    networks:
+      - dokploy-network   # Traefik lives here; this is how it reaches us.
+      - internal          # private link to postgres.
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  backup:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      BACKUP_KEEP_DAYS: "14"
+    volumes:
+      - ./backup/backup.sh:/usr/local/bin/backup.sh:ro
+      - ./backups:/backups
+    networks:
+      - internal
+    entrypoint: ["/bin/sh", "/usr/local/bin/backup.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+networks:
+  # Shared Dokploy/Traefik network — already exists on the host.
+  dokploy-network:
+    external: true
+  # Private network for auth <-> postgres <-> backup.
+  internal:
+
+volumes:
+  pg_data:
