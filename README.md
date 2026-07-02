@@ -262,8 +262,10 @@ for what the installed Better Auth version expects), then reconcile `src/schema.
 npx @better-auth/cli generate
 ```
 
-`auth/drizzle/` (generated SQL) and `auth/dist/` are gitignored; the Docker build
-regenerates the migrations from `src/schema.ts`.
+Migrations under `auth/drizzle/` are **committed** (not regenerated at build) so their
+timestamps stay stable — otherwise a rebuild makes the drizzle migrator re-run
+already-applied migrations against the live DB and crash. After changing `schema.ts`, run
+`npm run db:generate` and **commit** the new migration. (`auth/dist/` stays gitignored.)
 
 ---
 

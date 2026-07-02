@@ -5,16 +5,18 @@
 FROM node:22-slim AS build
 WORKDIR /app
 
-# Install all deps (incl. dev) for compiling TS and generating migrations.
+# Install all deps (incl. dev) for compiling TS.
 COPY package.json package-lock.json ./
 RUN npm ci
 
-COPY tsconfig.json drizzle.config.ts ./
+COPY tsconfig.json ./
 COPY src ./src
 
-# Compile TS -> dist and generate SQL migrations from the schema into ./drizzle.
-RUN npm run build \
- && npx drizzle-kit generate
+# Compile TS -> dist. Migrations are COMMITTED under ./drizzle and are NOT generated here:
+# regenerating at build time gives each build fresh migration timestamps, which makes the
+# drizzle migrator re-run already-applied migrations against the live DB (CREATE TABLE ->
+# "already exists") and crash. Committed migrations keep those timestamps stable.
+RUN npm run build
 
 # ---- runtime stage ----
 FROM node:22-slim AS runtime
@@ -25,9 +27,9 @@ ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-# Compiled app + generated migrations.
+# Compiled app + committed SQL migrations.
 COPY --from=build /app/dist ./dist
-COPY --from=build /app/drizzle ./drizzle
+COPY drizzle ./drizzle
 
 EXPOSE 3000
 
