@@ -75,6 +75,18 @@ export const auth = betterAuth({
     },
   },
 
+  account: {
+    // When a user signs in with Google/Microsoft and a user row already exists with the
+    // same (verified) email but no linked account, link them instead of erroring. Safe
+    // because both providers return verified emails, and it's scoped to trustedProviders.
+    // Needed so migrated password-only users (who have no carried-over credential) can get
+    // back into their account via social sign-in on the same email.
+    accountLinking: {
+      enabled: true,
+      trustedProviders: ["google", "microsoft"],
+    },
+  },
+
   user: {
     additionalFields: {
       // JSON array string. input:false => clients can't set it at signup.
