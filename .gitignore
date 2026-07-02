@@ -10,9 +10,6 @@ node_modules/
 auth/dist/
 dist/
 
-# Generated Drizzle migrations (generated during the Docker build).
-auth/drizzle/
-
 # Database backups produced at runtime.
 backups/
 
