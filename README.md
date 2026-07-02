@@ -9,6 +9,8 @@ no app calls this service per request.
 - **Stack:** Node 22 · TypeScript (ESM) · Express · Better Auth `^1.6.9` · Drizzle ORM · Postgres 16
 - **Deploy:** self-hosted **Dokploy** on the shared MAC Oracle VM, behind Dokploy's **Traefik**
   (which terminates TLS via Let's Encrypt). See [`DEPLOY-dokploy.md`](DEPLOY-dokploy.md).
+- **Building an app that needs login?** Skip to
+  [**Integrating your app**](#integrating-your-app-for-other-mac-repos) — the full copy-paste recipe.
 
 ---
 
@@ -123,29 +125,104 @@ this service.
 
 ---
 
-## Getting a token in an app
+## Integrating your app (for other MAC repos)
 
-Social sign-in is a **POST** endpoint (not a GET link). An app starts the flow via the
-Better Auth client, or directly:
-
-```bash
-curl -s -X POST https://auth.monashcoding.com/api/auth/sign-in/social \
-  -H "Content-Type: application/json" \
-  -d '{"provider":"google","callbackURL":"https://yourapp.monashcoding.com/"}'
-# -> { "url": "https://accounts.google.com/...", "redirect": true }
-```
-
-Redirect the user to that `url`. After they have a session, the app's backend can mint a JWT
-with the session cookie:
+This is the full recipe for making any MAC app use this service as its login. The app stores
+**no passwords and no accounts** — it trusts JWTs this service mints and keys its own data by
+`macUserId`.
 
 ```
-GET https://auth.monashcoding.com/api/auth/token
-Cookie: <better-auth session cookie>
--> { "token": "<jwt>" }
+ User ─sign in─▶ auth.monashcoding.com ─Google/Microsoft─▶ shared session cookie (.monashcoding.com)
+                                                                     │
+ Your app ◀─ JWT {macUserId,email,roles} ◀─ GET /api/auth/token ◀────┘
+    └─ verifies the JWT locally (jose + JWKS) — no call back to auth per request
+    └─ stores/loads its data keyed by macUserId
 ```
 
-The session cookie is scoped to `.monashcoding.com`, so it is shared across MAC app
-subdomains.
+### Step 0 — one-time registration
+
+1. **Serve the app on a `*.monashcoding.com` subdomain** (e.g. `jobs.monashcoding.com`).
+   Cross-app single sign-on relies on a cookie scoped to `.monashcoding.com`, so an app on a
+   different domain won't get silent SSO (sign-in still works, just not shared).
+2. **Add the app's origin to `TRUSTED_ORIGINS`** in the auth service's Dokploy Environment tab
+   (comma-separated) and redeploy auth. Without this, auth rejects the flow.
+3. `npm i jose` and **copy [`examples/verify.ts`](examples/verify.ts)** into the app's backend.
+
+### Step 1 — start sign-in (frontend)
+
+Social sign-in is a **POST** (not a GET link). It returns a URL to redirect the user to:
+
+```js
+const res = await fetch("https://auth.monashcoding.com/api/auth/sign-in/social", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  credentials: "include",                    // so the session cookie is set
+  body: JSON.stringify({
+    provider: "google",                      // or "microsoft"
+    callbackURL: "https://jobs.monashcoding.com/",   // where to return after login
+  }),
+});
+window.location = (await res.json()).url;    // → Google/Microsoft consent → back to your app
+```
+
+After the user returns, the browser holds a session cookie for `.monashcoding.com`.
+
+### Step 2 — get a token (frontend)
+
+```js
+const { token } = await fetch("https://auth.monashcoding.com/api/auth/token", {
+  credentials: "include",                    // sends the shared cookie
+}).then(r => r.json());
+// send it to YOUR backend:
+await fetch("/api/whatever", { headers: { Authorization: `Bearer ${token}` } });
+```
+
+If `/api/auth/token` returns 401, the user isn't signed in — send them through Step 1.
+
+### Step 3 — verify on your backend (per request, local, no network call)
+
+```ts
+import { verifyMacToken } from "./verify";   // examples/verify.ts
+
+const auth = req.headers.authorization?.replace("Bearer ", "");
+const claims = await verifyMacToken(auth);   // throws if invalid/expired
+// claims: { macUserId, email, roles, ver }
+```
+
+Set `AUTH_URL=https://auth.monashcoding.com` in the app's env (verify.ts reads it).
+
+### Step 4 — key your data by `macUserId`
+
+`claims.macUserId` is the canonical, stable per-person ID. Use it as the foreign key for the
+app's own tables — never store the email as the primary key (emails can change).
+
+### Authorization with roles
+
+`claims.roles` (e.g. `["member"]`, `["member","admin"]`) comes straight from the token:
+
+```ts
+if (!claims.roles.includes("admin")) return res.status(403).end();
+```
+
+Roles are managed centrally on the `user` row in the auth DB (a JSON string) — updating them
+there changes what every app sees on the next token.
+
+### Token lifetime & sign-out
+
+- Access tokens live **15 minutes**. When a call 401s on an expired token, re-fetch a fresh
+  one from `/api/auth/token` (the session cookie lasts much longer) and retry.
+- Sign out with `POST https://auth.monashcoding.com/api/auth/sign-out` (`credentials: "include"`).
+  This clears the shared session across all MAC apps.
+
+### Endpoint reference
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/auth/sign-in/social` | POST | Start Google/Microsoft login → returns `{ url }` |
+| `/api/auth/token` | GET | Mint a JWT for the current session → `{ token }` |
+| `/api/auth/get-session` | GET | Inspect the current session |
+| `/api/auth/sign-out` | POST | End the session |
+| `/api/auth/jwks` | GET | Public keys (verify.ts uses this; you don't call it directly) |
 
 ---
 
