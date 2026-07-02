@@ -110,7 +110,7 @@ fs.writeFileSync(
   + `//   mongosh "<MPLOY_MONGO_URI>" mongo_remap.js\n`
   + `const idmap = ${JSON.stringify(idmap)};\n`
   + `const d = db.getSiblingDB(${JSON.stringify(DB)});\n`
-  + `for (const c of ["applications","application_cycles","application_stages","application_status_events"]) {\n`
+  + `for (const c of ["applications","application_cycles","application_status_events"]) {\n`
   + `  let n = 0;\n`
   + `  for (const [mid, mac] of Object.entries(idmap)) {\n`
   + `    n += d[c].updateMany({ userId: ObjectId(mid) }, { $set: { userId: mac } }).modifiedCount;\n`
