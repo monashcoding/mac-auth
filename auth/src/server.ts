@@ -13,13 +13,32 @@ import { auth } from "./auth.js";
 const app = express();
 const port = Number(process.env.PORT ?? 3000);
 
-// Origins allowed to make credentialed cross-subdomain browser calls (same list Better
+// Origins allowed to make credentialed cross-subdomain browser calls (same policy Better
 // Auth trusts). MAC apps live on *.monashcoding.com, so their client-side signIn/useSession
 // calls to this service are cross-origin and need CORS with credentials.
-const trustedOrigins = (process.env.TRUSTED_ORIGINS ?? "")
+//
+// Any https *.monashcoding.com origin is allowed by default; TRUSTED_ORIGINS adds any
+// off-domain extras (e.g. http://localhost:3000 in dev). The `cors` array form does exact
+// string matching, so the wildcard is enforced with a function instead.
+const extraOrigins = (process.env.TRUSTED_ORIGINS ?? "")
   .split(",")
   .map((o) => o.trim())
   .filter(Boolean);
+
+/** True for https apps on any *.monashcoding.com subdomain, plus any explicit extras. */
+function isAllowedOrigin(origin: string): boolean {
+  if (extraOrigins.includes(origin)) return true;
+  try {
+    const url = new URL(origin);
+    return (
+      url.protocol === "https:" &&
+      (url.hostname === "monashcoding.com" ||
+        url.hostname.endsWith(".monashcoding.com"))
+    );
+  } catch {
+    return false;
+  }
+}
 
 // Behind a TLS-terminating reverse proxy (Traefik): trust the proxy so secure cookies
 // and the correct protocol/host are honoured.
@@ -30,7 +49,9 @@ app.set("trust proxy", 1);
 // with no Origin (server-to-server, health checks) pass through untouched.
 app.use(
   cors({
-    origin: trustedOrigins,
+    // Reflect the request origin only when allowed; requests with no Origin
+    // (server-to-server, health checks) pass through with `cb(null, true)`.
+    origin: (origin, cb) => cb(null, !origin || isAllowedOrigin(origin)),
     credentials: true,
   }),
 );

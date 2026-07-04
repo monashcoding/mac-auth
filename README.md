@@ -75,7 +75,7 @@ under `projects@monashcoding.com`.
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Self-hosted Postgres credentials. **Keep the password URL/shell-safe — letters+digits only** (`$ @ : / #` break env interpolation and the assembled `DATABASE_URL`; use `openssl rand -hex 24`). |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth client. The ID must end in `.apps.googleusercontent.com` (watch for truncation when pasting). |
 | `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` | Microsoft OAuth client (tenant `common`). |
-| `TRUSTED_ORIGINS` | Comma-separated app origins allowed to start auth flows. |
+| `TRUSTED_ORIGINS` | Comma-separated **extra** origins allowed to start auth flows. Every https `*.monashcoding.com` subdomain is trusted automatically, so this is only for off-domain origins (e.g. `http://localhost:3000` in dev). |
 | `JWT_AUDIENCE` | JWT `aud` claim — `mac-suite`. |
 
 ---
@@ -143,10 +143,13 @@ This is the full recipe for making any MAC app use this service as its login. Th
 
 1. **Serve the app on a `*.monashcoding.com` subdomain** (e.g. `jobs.monashcoding.com`).
    Cross-app single sign-on relies on a cookie scoped to `.monashcoding.com`, so an app on a
-   different domain won't get silent SSO (sign-in still works, just not shared).
-2. **Add the app's origin to `TRUSTED_ORIGINS`** in the auth service's Dokploy Environment tab
-   (comma-separated) and redeploy auth. Without this, auth rejects the flow.
-3. `npm i jose` and **copy [`examples/verify.ts`](examples/verify.ts)** into the app's backend.
+   different domain won't get silent SSO (sign-in still works, just not shared). Being on a
+   `*.monashcoding.com` subdomain also means the app's origin is **trusted automatically** —
+   no auth-side config or redeploy is needed to onboard it.
+2. `npm i jose` and **copy [`examples/verify.ts`](examples/verify.ts)** into the app's backend.
+
+   *(Only if the app is served off-domain — e.g. local dev on `http://localhost:3000` — add
+   that origin to `TRUSTED_ORIGINS` in the auth service's Dokploy Environment tab and redeploy.)*
 
 ### Step 1 — start sign-in (frontend)
 

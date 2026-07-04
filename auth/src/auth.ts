@@ -19,10 +19,19 @@ import { schema } from "./schema.js";
 const baseURL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
 const audience = process.env.JWT_AUDIENCE ?? "mac-suite";
 
-const trustedOrigins = (process.env.TRUSTED_ORIGINS ?? "")
-  .split(",")
-  .map((o) => o.trim())
-  .filter(Boolean);
+// Any https app on a *.monashcoding.com subdomain is trusted by default. Better Auth
+// supports wildcard patterns in trustedOrigins, so a new MAC app needs no auth-side
+// change to start a flow (it still needs to be served on a monashcoding.com subdomain).
+// TRUSTED_ORIGINS remains for anything off-domain (e.g. http://localhost:3000 in dev).
+const MONASH_ORIGIN_WILDCARD = "https://*.monashcoding.com";
+
+const trustedOrigins = [
+  MONASH_ORIGIN_WILDCARD,
+  ...(process.env.TRUSTED_ORIGINS ?? "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean),
+];
 
 const MONASH_DOMAINS = ["monash.edu", "student.monash.edu"];
 
