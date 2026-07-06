@@ -159,11 +159,29 @@ membership list. Curate the committee once in Notion; removing someone there rev
 **Roles:** `committee` (present in the roster), `exec` (`"Executive"` in the person's Notion
 Team multi-select), `admin` (env `ADMIN_EMAILS`, independent of Notion).
 
+**First-time setup (per environment):**
+
+1. Set `NOTION_TOKEN`, `NOTION_ROSTER_DB_ID`, `NOTION_VERSION`, and `ADMIN_EMAILS` (see the
+   [Environment](#environment) table). In Dokploy these go in the service's Environment tab —
+   and they must also be **forwarded in `docker-compose.dokploy.yml`** (compose only injects the
+   vars it references; they're already listed there). See [DEPLOY-dokploy.md](DEPLOY-dokploy.md).
+2. Share the `Committee Directory` database with the Notion integration that owns `NOTION_TOKEN`
+   (the `GcalInt` integration, shared with `notioncal-to-gcal`), or the sync gets a 404.
+3. Deploy (migration `0001` creates the roster tables automatically), then run the first sync so
+   you don't wait for the hourly job — see **Apply now** below. On boot the logs show
+   `[roster-sync] scheduled hourly (0 * * * *).` (or a "not set — skipping" warning if the env
+   vars didn't land).
+
 **Operating it:**
 
-- **Apply now** (recruitment day): run the manual sync instead of waiting up to an hour —
-  `npm run sync-roster` (locally / dev), or in the container `node dist/sync/cli.js`, or
-  `POST /api/admin/sync-roster` (gated to `ADMIN_EMAILS`).
+- **Apply now** (recruitment day, or the first sync): run the manual sync instead of waiting up to
+  an hour. In production (Docker Swarm):
+  ```bash
+  docker exec "$(docker ps -qf name=auth | head -1)" node dist/sync/cli.js
+  # -> [roster-sync] upserted=<n> removed=<n>
+  ```
+  Locally use `npm run sync-roster`; there's also `POST /api/admin/sync-roster` (gated to
+  `ADMIN_EMAILS`, needs an admin session).
 - **Guard rail:** a sync that would empty the roster or remove >50% of people is refused (likely a
   bad fetch or fat-fingered Notion edit). For genuine churn, run once with `FORCE_ROSTER_SYNC=1`,
   then unset it.
