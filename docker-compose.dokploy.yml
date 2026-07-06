@@ -24,6 +24,14 @@ services:
       MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET}
       TRUSTED_ORIGINS: ${TRUSTED_ORIGINS}
       JWT_AUDIENCE: ${JWT_AUDIENCE}
+      # Committee roster (Notion). Without these, the hourly sync is skipped and the
+      # committee/exec/team claims stay empty — logins still work.
+      NOTION_TOKEN: ${NOTION_TOKEN}
+      NOTION_ROSTER_DB_ID: ${NOTION_ROSTER_DB_ID}
+      NOTION_VERSION: ${NOTION_VERSION}
+      ADMIN_EMAILS: ${ADMIN_EMAILS}
+      # One-shot override to bypass the >50%-removal guard; leave unset normally.
+      FORCE_ROSTER_SYNC: ${FORCE_ROSTER_SYNC}
       PORT: "3000"
     expose:
       - "3000"

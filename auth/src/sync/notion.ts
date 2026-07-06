@@ -21,11 +21,13 @@ export interface RosterRecord {
   matchEmails: string[]; // normalized, deduped
 }
 
-const NOTION_VERSION = process.env.NOTION_VERSION ?? "2022-06-28"; // match notioncal-to-gcal
+// `||` (not `??`) so a blank env var — which is what docker-compose interpolation produces
+// for an unset Dokploy variable — falls back to the default instead of an empty string.
+const NOTION_VERSION = process.env.NOTION_VERSION || "2022-06-28"; // match notioncal-to-gcal
 
 // Abort a single Notion request after this long so a hung connection can't stall the
 // hourly job (or wedge the admin endpoint) indefinitely.
-const NOTION_TIMEOUT_MS = Number(process.env.NOTION_TIMEOUT_MS ?? 15000);
+const NOTION_TIMEOUT_MS = Number(process.env.NOTION_TIMEOUT_MS) || 15000;
 
 /** Read env lazily so a missing token only errors when a sync actually runs. */
 function notionConfig(): { token: string; dbId: string } {
