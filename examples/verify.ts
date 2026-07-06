@@ -21,6 +21,8 @@ export interface MacClaims {
   macUserId: string;
   email: string;
   roles: string[];
+  /** Functional team (e.g. "Events"), or null if the person isn't on the committee roster. */
+  team: string | null;
   ver: number;
 }
 
@@ -39,6 +41,7 @@ export async function verifyMacToken(token: string): Promise<MacClaims> {
     macUserId: payload.macUserId as string,
     email: payload.email as string,
     roles: (payload.roles as string[]) ?? [],
+    team: (payload.team as string | null) ?? null,
     ver: (payload.ver as number) ?? 1,
   };
 }

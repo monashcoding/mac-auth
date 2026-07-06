@@ -15,6 +15,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { jwt } from "better-auth/plugins";
 import { db } from "./db.js";
 import { schema } from "./schema.js";
+import { claimsForEmail } from "./roster/lookup.js";
 
 const baseURL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
 const audience = process.env.JWT_AUDIENCE ?? "mac-suite";
@@ -54,6 +55,33 @@ function parseRoles(raw: unknown): string[] {
     }
   }
   return ["member"];
+}
+
+/** Union two role lists, preserving order and dropping duplicates. */
+function mergeRoles(base: string[], extra: string[]): string[] {
+  const out = [...base];
+  for (const r of extra) if (!out.includes(r)) out.push(r);
+  return out;
+}
+
+/**
+ * Build the roster-derived part of the claims (roster roles + team) for a login email.
+ *
+ * CRASH-SAFETY: this is the ONLY roster read on the token-mint path, and it must never
+ * throw. The roster is derived from Postgres (never live Notion), so a Notion outage
+ * doesn't reach here at all — but a DB hiccup or bad row could. On any failure we log and
+ * fall back to no roster roles + null team, so members still get a valid token (with
+ * their base roles) instead of being locked out.
+ */
+async function rosterClaims(
+  email: string,
+): Promise<{ roles: string[]; team: string | null }> {
+  try {
+    return await claimsForEmail(db, email);
+  } catch (err) {
+    console.error("[roster] claim derivation failed; minting with base roles:", err);
+    return { roles: [], team: null };
+  }
 }
 
 export const auth = betterAuth({
@@ -137,12 +165,19 @@ export const auth = betterAuth({
         issuer: baseURL,
         audience,
         expirationTime: "15m",
-        definePayload: ({ user }) => ({
-          macUserId: user.id,
-          email: user.email,
-          roles: parseRoles((user as Record<string, unknown>).roles),
-          ver: 1,
-        }),
+        definePayload: async ({ user }) => {
+          // Base roles from the stored user row (defaults to ["member"]), merged with the
+          // roster-derived roles (committee/exec/admin). `team` = first functional team.
+          const base = parseRoles((user as Record<string, unknown>).roles);
+          const { roles: derived, team } = await rosterClaims(user.email);
+          return {
+            macUserId: user.id,
+            email: user.email,
+            roles: mergeRoles(base, derived),
+            team,
+            ver: 1,
+          };
+        },
         // sub == macUserId (this is also the default, set explicitly for clarity).
         getSubject: ({ user }) => user.id,
       },

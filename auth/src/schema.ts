@@ -81,4 +81,11 @@ export const jwks = pgTable("jwks", {
   expiresAt: timestamp("expiresAt", { mode: "date" }),
 });
 
+// Committee roster tables (source of the derived committee/exec/team claims). Defined in
+// their own module; re-exported here so drizzle-kit generates their migrations from the
+// single schema entrypoint. They are NOT part of the Better Auth `schema` barrel below —
+// Better Auth only manages the auth tables — but the roster sync/lookup queries import
+// them directly.
+export { roster, rosterEmail } from "./roster/schema.js";
+
 export const schema = { user, session, account, verification, jwks };

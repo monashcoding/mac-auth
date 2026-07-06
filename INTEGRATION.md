@@ -18,7 +18,7 @@ data by the user's stable `macUserId`.
 ```
  User ─sign in─▶ auth.monashcoding.com ─Google/Microsoft─▶ session cookie (.monashcoding.com)
                                                                     │
- Your app ◀─ JWT { macUserId, email, roles } ◀─ GET /api/auth/token ◀┘
+ Your app ◀─ JWT { macUserId, email, roles, team } ◀─ GET /api/auth/token ◀┘
     └─ verifies the JWT locally (jose + published JWKS) — no call back to auth per request
     └─ stores/loads its data keyed by macUserId
 ```
@@ -61,7 +61,8 @@ Every token your app receives carries exactly these claims:
 {
   "macUserId": "<stable per-person id>",
   "email": "<user email>",
-  "roles": ["member"],
+  "roles": ["member", "committee", "exec"],
+  "team": "Events",
   "ver": 1,
   "iss": "https://auth.monashcoding.com",
   "aud": "mac-suite",
@@ -71,8 +72,12 @@ Every token your app receives carries exactly these claims:
 
 - **`macUserId`** — the canonical, stable identifier for a person. Use it as the foreign key
   in your own tables. **Never key data by email** (emails change).
-- **`roles`** — a string array (e.g. `["member"]`, `["member","admin"]`). Managed centrally on
-  the user's record in the auth DB; whatever is set there shows up in the next token.
+- **`roles`** — a string array. `member` is the baseline for anyone signed in. `committee` is
+  added for anyone on the central committee roster (curated in Notion), `exec` for execs, and
+  `admin` for infra superusers (env allowlist, **not** from Notion). Gate committee-only
+  features on `roles.includes("committee")`.
+- **`team`** — the person's functional team (e.g. `"Events"`), or `null` if they aren't on the
+  committee roster. Informational — it tells you *where they sit*, not what they can do.
 - `iss` is always `https://auth.monashcoding.com`, `aud` is always `mac-suite`. Your verifier
   checks both.
 
@@ -104,6 +109,7 @@ export interface MacClaims {
   macUserId: string;
   email: string;
   roles: string[];
+  team: string | null;
   ver: number;
 }
 
@@ -122,6 +128,7 @@ export async function verifyMacToken(token: string): Promise<MacClaims> {
     macUserId: payload.macUserId as string,
     email: payload.email as string,
     roles: (payload.roles as string[]) ?? [],
+    team: (payload.team as string | null) ?? null,
     ver: (payload.ver as number) ?? 1,
   };
 }
@@ -176,7 +183,7 @@ import { verifyMacToken } from "./verify";
 
 const token = req.headers.authorization?.replace("Bearer ", "");
 try {
-  const claims = await verifyMacToken(token);   // { macUserId, email, roles, ver }
+  const claims = await verifyMacToken(token);   // { macUserId, email, roles, team, ver }
   // ... proceed as this user
 } catch {
   return res.status(401).end();                 // invalid or expired token
@@ -202,12 +209,18 @@ await db.notes.create({ userId: claims.macUserId, body });
 ## Authorization with roles
 
 ```ts
-if (!claims.roles.includes("admin")) return res.status(403).end();
+// Committee-only feature:
+if (!claims.roles.includes("committee")) return res.status(403).end();
+
+// Team-scoped view (informational):
+if (claims.team === "Events") { /* ... */ }
 ```
 
-Roles are managed centrally — ask an auth-service maintainer to set them on the user's record.
-The change appears in that user's next token (within 15 minutes, or immediately after they
-re-fetch one).
+`committee`, `exec`, and `team` are **derived** from the central committee roster (curated in
+Notion, synced hourly into the auth DB) — you never manage membership per-app. Removing someone
+from the roster revokes `committee`/`exec` in their next token everywhere. `admin` is a separate
+infra allowlist. Changes appear in a user's next token (within 15 minutes, or immediately after
+they re-fetch one).
 
 ---
 

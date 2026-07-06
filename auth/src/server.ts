@@ -7,8 +7,16 @@
  */
 import express from "express";
 import cors from "cors";
-import { toNodeHandler } from "better-auth/node";
+import { toNodeHandler, fromNodeHeaders } from "better-auth/node";
 import { auth } from "./auth.js";
+import { db } from "./db.js";
+import { runRosterSync, scheduleRosterSync } from "./sync/index.js";
+
+// Infra superusers (NOT from Notion). Used to gate the manual sync endpoint.
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "")
+  .split(",")
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
 
 const app = express();
 const port = Number(process.env.PORT ?? 3000);
@@ -67,6 +75,32 @@ app.all("/api/auth/*", toNodeHandler(auth));
 // JSON parser for any of our own routes declared after this point.
 app.use(express.json());
 
+// Manual roster sync, gated to an infra admin (ADMIN_EMAILS). The scheduled hourly job
+// covers normal operation; this is the "apply now" button for recruitment day. Every
+// failure path returns JSON and leaves the server running — a Notion outage here just
+// yields a 502, never a crash.
+app.post("/api/admin/sync-roster", async (req, res) => {
+  try {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
+    const email = session?.user?.email?.toLowerCase();
+    if (!email || !ADMIN_EMAILS.includes(email)) {
+      return res.status(403).json({ error: "forbidden" });
+    }
+    const result = await runRosterSync(db);
+    return res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error("[roster-sync] admin trigger failed:", err);
+    return res
+      .status(502)
+      .json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 app.listen(port, () => {
   console.log(`[auth] listening on :${port}`);
+  // Wire the hourly roster sync. Only schedules a timer — never calls Notion at boot —
+  // so a Notion outage can't affect startup or logins.
+  scheduleRosterSync(db);
 });
