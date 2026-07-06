@@ -75,8 +75,12 @@ under `projects@monashcoding.com`.
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Self-hosted Postgres credentials. **Keep the password URL/shell-safe — letters+digits only** (`$ @ : / #` break env interpolation and the assembled `DATABASE_URL`; use `openssl rand -hex 24`). |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth client. The ID must end in `.apps.googleusercontent.com` (watch for truncation when pasting). |
 | `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` | Microsoft OAuth client (tenant `common`). |
-| `TRUSTED_ORIGINS` | Comma-separated app origins allowed to start auth flows. |
+| `TRUSTED_ORIGINS` | Comma-separated **extra** origins allowed to start auth flows. Every https `*.monashcoding.com` subdomain is trusted automatically, so this is only for off-domain origins (e.g. `http://localhost:3000` in dev). |
 | `JWT_AUDIENCE` | JWT `aud` claim — `mac-suite`. |
+| `NOTION_TOKEN` / `NOTION_ROSTER_DB_ID` | Notion integration token (owned by `projects@`, shared with `notioncal-to-gcal`) + the committee-roster database id. Drives the derived `committee`/`exec`/`team` claims. If unset, the roster sync is skipped and those claims stay empty — logins still work. |
+| `NOTION_VERSION` | Notion API version. Match `notioncal-to-gcal` (default `2022-06-28`). |
+| `ADMIN_EMAILS` | Comma-separated infra superusers granted `admin` (NOT from Notion). Also gates `POST /api/admin/sync-roster`. |
+| `FORCE_ROSTER_SYNC` | Set to `1` for ONE sync to bypass the >50%-removal guard (recruitment churn), then unset. |
 
 ---
 
@@ -102,7 +106,8 @@ Apps can rely on exactly these claims (plus standard `sub`, `iat`):
 {
   "macUserId": "<user.id>",
   "email": "<user.email>",
-  "roles": ["member"],
+  "roles": ["member", "committee", "exec"],
+  "team": "Events",
   "ver": 1,
   "iss": "https://auth.monashcoding.com",
   "aud": "mac-suite",
@@ -112,7 +117,11 @@ Apps can rely on exactly these claims (plus standard `sub`, `iat`):
 
 - Algorithm: **EdDSA (Ed25519)**, signed with the key published at `/api/auth/jwks`.
 - Access-token lifetime: **15 minutes**.
-- `roles` is a parsed array (stored in the DB as a JSON string).
+- `roles` is the union of the user's base roles (`member`) and roles **derived** from the
+  committee roster at mint time: `committee` (on the roster), `exec` (`"Executive"` in their
+  Notion Team), and `admin` (env allowlist, not from Notion). See [Committee roster](#committee-roster).
+- `team` is the person's first functional team (e.g. `"Events"`), or `null` if not on the
+  roster. Informational — gate access on `roles`, not `team`.
 - `isMonash` is recorded on the `user` row (from `@monash.edu` / `@student.monash.edu`)
   for later eligibility logic — it is **not** in the token and does **not** gate signup.
 
@@ -120,8 +129,49 @@ Apps can rely on exactly these claims (plus standard `sub`, `iat`):
 
 Copy [`examples/verify.ts`](examples/verify.ts) into the app (only dependency: `jose`).
 It fetches and caches the JWKS with `createRemoteJWKSet` and checks `iss`, `aud`, and
-`exp`, returning typed `{ macUserId, email, roles, ver }` claims. No per-request call to
-this service.
+`exp`, returning typed `{ macUserId, email, roles, team, ver }` claims. No per-request call
+to this service.
+
+---
+
+## Committee roster
+
+Committee membership, team, and exec status are **derived** from the central Notion committee
+roster (the **`Committee Directory`** database) and injected into the token — no app keeps its own
+membership list. Curate the committee once in Notion; removing someone there revokes their
+`committee`/`exec` roles everywhere on their next token.
+
+**How it flows:** `Notion → roster tables (Postgres) → claims`.
+
+- An hourly [`node-cron`](auth/src/sync/index.ts) job fetches the Notion roster and upserts it
+  into the `roster` / `roster_email` tables (keyed by the stable Notion page id).
+- The `Committee Directory` also holds **former** members (tagged `Current MAC Role = "Alumni"`);
+  the sync **skips alumni**, so only current committee get roles. Re-tag someone `Alumni` to
+  revoke their access on the next sync.
+- At token-mint time, the login email is matched against `roster_email` (any of a person's
+  Student / Preferred / Personal / Work emails) and the roles/team are derived. **Nothing is
+  stamped on the user row.**
+- Tokens are always minted from Postgres, **never from live Notion** — so a Notion outage cannot
+  affect logins. It only means the roster stops updating until Notion recovers (the last-synced
+  roster keeps serving). If the roster read itself ever fails, the mint path falls back to base
+  roles rather than blocking the login.
+
+**Roles:** `committee` (present in the roster), `exec` (`"Executive"` in the person's Notion
+Team multi-select), `admin` (env `ADMIN_EMAILS`, independent of Notion).
+
+**Operating it:**
+
+- **Apply now** (recruitment day): run the manual sync instead of waiting up to an hour —
+  `npm run sync-roster` (locally / dev), or in the container `node dist/sync/cli.js`, or
+  `POST /api/admin/sync-roster` (gated to `ADMIN_EMAILS`).
+- **Guard rail:** a sync that would empty the roster or remove >50% of people is refused (likely a
+  bad fetch or fat-fingered Notion edit). For genuine churn, run once with `FORCE_ROSTER_SYNC=1`,
+  then unset it.
+- **A committee member 403s / has no `committee` role?** First check they aren't tagged `Alumni`.
+  Then check the email they log in with is one of their Notion emails (Student / Preferred /
+  Personal / Work). A typo in an email is the usual cause — fix it in Notion, then re-sync.
+- **Notion token** lives with `projects@`. If rotated, update `NOTION_TOKEN` here **and** in
+  `notioncal-to-gcal`.
 
 ---
 
@@ -134,7 +184,7 @@ This is the full recipe for making any MAC app use this service as its login. Th
 ```
  User ─sign in─▶ auth.monashcoding.com ─Google/Microsoft─▶ shared session cookie (.monashcoding.com)
                                                                      │
- Your app ◀─ JWT {macUserId,email,roles} ◀─ GET /api/auth/token ◀────┘
+ Your app ◀─ JWT {macUserId,email,roles,team} ◀─ GET /api/auth/token ◀─┘
     └─ verifies the JWT locally (jose + JWKS) — no call back to auth per request
     └─ stores/loads its data keyed by macUserId
 ```
@@ -143,10 +193,13 @@ This is the full recipe for making any MAC app use this service as its login. Th
 
 1. **Serve the app on a `*.monashcoding.com` subdomain** (e.g. `jobs.monashcoding.com`).
    Cross-app single sign-on relies on a cookie scoped to `.monashcoding.com`, so an app on a
-   different domain won't get silent SSO (sign-in still works, just not shared).
-2. **Add the app's origin to `TRUSTED_ORIGINS`** in the auth service's Dokploy Environment tab
-   (comma-separated) and redeploy auth. Without this, auth rejects the flow.
-3. `npm i jose` and **copy [`examples/verify.ts`](examples/verify.ts)** into the app's backend.
+   different domain won't get silent SSO (sign-in still works, just not shared). Being on a
+   `*.monashcoding.com` subdomain also means the app's origin is **trusted automatically** —
+   no auth-side config or redeploy is needed to onboard it.
+2. `npm i jose` and **copy [`examples/verify.ts`](examples/verify.ts)** into the app's backend.
+
+   *(Only if the app is served off-domain — e.g. local dev on `http://localhost:3000` — add
+   that origin to `TRUSTED_ORIGINS` in the auth service's Dokploy Environment tab and redeploy.)*
 
 ### Step 1 — start sign-in (frontend)
 
@@ -186,7 +239,7 @@ import { verifyMacToken } from "./verify";   // examples/verify.ts
 
 const auth = req.headers.authorization?.replace("Bearer ", "");
 const claims = await verifyMacToken(auth);   // throws if invalid/expired
-// claims: { macUserId, email, roles, ver }
+// claims: { macUserId, email, roles, team, ver }
 ```
 
 Set `AUTH_URL=https://auth.monashcoding.com` in the app's env (verify.ts reads it).
@@ -198,14 +251,16 @@ app's own tables — never store the email as the primary key (emails can change
 
 ### Authorization with roles
 
-`claims.roles` (e.g. `["member"]`, `["member","admin"]`) comes straight from the token:
+`claims.roles` (e.g. `["member"]`, `["member","committee","exec"]`) comes straight from the token:
 
 ```ts
-if (!claims.roles.includes("admin")) return res.status(403).end();
+// Committee-only feature:
+if (!claims.roles.includes("committee")) return res.status(403).end();
 ```
 
-Roles are managed centrally on the `user` row in the auth DB (a JSON string) — updating them
-there changes what every app sees on the next token.
+`committee` / `exec` / `team` are derived from the [committee roster](#committee-roster) (Notion,
+synced hourly) — you never manage membership per-app. `member` is the baseline for any signed-in
+user; `admin` is an infra allowlist. Changes appear on each user's next token.
 
 ### Token lifetime & sign-out
 
