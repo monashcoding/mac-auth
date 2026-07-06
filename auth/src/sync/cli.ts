@@ -6,7 +6,7 @@
  * Fetches Notion and applies once, then exits. Non-zero exit on failure so it's visible
  * in a terminal / CI. Uses the shared long-lived client, closed on the way out.
  */
-import { db, client } from "../db.js";
+import { client, db } from "../db.js";
 import { runRosterSync } from "./index.js";
 
 runRosterSync(db)

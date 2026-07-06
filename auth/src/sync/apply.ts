@@ -7,7 +7,7 @@
  * FORCE_ROSTER_SYNC=1 for genuine recruitment turnover. The whole apply runs in one
  * transaction, so a mid-sync failure leaves the previous roster intact.
  */
-import { inArray, eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { db as Db } from "../db.js";
 import { roster, rosterEmail } from "../roster/schema.js";
 import type { RosterRecord } from "./notion.js";
@@ -20,13 +20,8 @@ export interface ApplyResult {
   emailCollisions: string[];
 }
 
-export async function applyRoster(
-  db: Database,
-  incoming: RosterRecord[],
-): Promise<ApplyResult> {
-  const existing = await db
-    .select({ id: roster.id, notionId: roster.notionId })
-    .from(roster);
+export async function applyRoster(db: Database, incoming: RosterRecord[]): Promise<ApplyResult> {
+  const existing = await db.select({ id: roster.id, notionId: roster.notionId }).from(roster);
   const existingIds = new Map(existing.map((r) => [r.notionId, r.id]));
   const incomingIds = new Set(incoming.map((r) => r.notionId));
   const toRemove = [...existingIds.keys()].filter((nid) => !incomingIds.has(nid));

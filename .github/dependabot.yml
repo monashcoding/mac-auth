@@ -1,0 +1,18 @@
+version: 2
+updates:
+  # App dependencies (Node) live under /auth.
+  - package-ecosystem: npm
+    directory: /auth
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for routine minor/patch bumps to keep noise down.
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  # Keep the CI workflow's actions current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

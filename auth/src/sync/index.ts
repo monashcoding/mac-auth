@@ -13,8 +13,8 @@
  */
 import cron from "node-cron";
 import type { db as Db } from "../db.js";
+import { type ApplyResult, applyRoster } from "./apply.js";
 import { fetchNotionRoster, isNotionConfigured } from "./notion.js";
-import { applyRoster, type ApplyResult } from "./apply.js";
 
 type Database = typeof Db;
 

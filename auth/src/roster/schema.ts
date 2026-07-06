@@ -9,13 +9,7 @@
  * (Student / Preferred / Personal), normalized to trim + lowercase, so the mint-time
  * lookup is a single indexed read.
  */
-import {
-  pgTable,
-  text,
-  boolean,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { boolean, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const roster = pgTable("roster", {
   id: uuid("id").defaultRandom().primaryKey(),

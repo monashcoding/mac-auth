@@ -14,8 +14,8 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { jwt } from "better-auth/plugins";
 import { db } from "./db.js";
-import { schema } from "./schema.js";
 import { claimsForEmail } from "./roster/lookup.js";
+import { schema } from "./schema.js";
 
 const baseURL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
 const audience = process.env.JWT_AUDIENCE ?? "mac-suite";
@@ -73,9 +73,7 @@ function mergeRoles(base: string[], extra: string[]): string[] {
  * fall back to no roster roles + null team, so members still get a valid token (with
  * their base roles) instead of being locked out.
  */
-async function rosterClaims(
-  email: string,
-): Promise<{ roles: string[]; team: string | null }> {
+async function rosterClaims(email: string): Promise<{ roles: string[]; team: string | null }> {
   try {
     return await claimsForEmail(db, email);
   } catch (err) {

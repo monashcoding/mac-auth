@@ -1,0 +1,62 @@
+name: CI
+
+# Gate every push and PR to main. Dokploy auto-deploys from main, so this is the
+# safety net in front of it: if lint / typecheck / build / docker fail, the code
+# never reaches production green.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref (e.g. rapid pushes to a PR branch).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint · Typecheck · Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: auth
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: auth/package-lock.json
+
+      # Reproducible install from the committed lockfile.
+      - run: npm ci
+
+      # Lint + format check (Biome). Warnings (e.g. noExplicitAny at the Notion
+      # boundary) are surfaced but do not fail the build; formatting / lint errors do.
+      - run: npm run lint
+
+      # Type safety across the whole project.
+      - run: npm run typecheck
+
+      # Compile TS -> dist, exactly as the Docker build stage does.
+      - run: npm run build
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Validate the production image builds (multi-stage, incl. npm ci --omit=dev).
+      # Build only — no push. Layer cache via GitHub Actions cache.
+      - uses: docker/build-push-action@v6
+        with:
+          context: auth
+          file: auth/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

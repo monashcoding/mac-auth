@@ -7,21 +7,14 @@
  */
 import { eq } from "drizzle-orm";
 import type { db as Db } from "../db.js";
+import { type DerivedClaims, deriveClaims, normalizeEmail } from "./derive.js";
 import { roster, rosterEmail } from "./schema.js";
-import { deriveClaims, normalizeEmail, type DerivedClaims } from "./derive.js";
 
 type Database = typeof Db;
 
-export async function claimsForEmail(
-  db: Database,
-  email: string,
-): Promise<DerivedClaims> {
+export async function claimsForEmail(db: Database, email: string): Promise<DerivedClaims> {
   const e = normalizeEmail(email);
-  const link = await db
-    .select()
-    .from(rosterEmail)
-    .where(eq(rosterEmail.email, e))
-    .limit(1);
+  const link = await db.select().from(rosterEmail).where(eq(rosterEmail.email, e)).limit(1);
   if (link.length === 0) return deriveClaims(e, null);
 
   const row = await db

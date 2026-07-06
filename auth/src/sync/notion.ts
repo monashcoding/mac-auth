@@ -34,9 +34,7 @@ function notionConfig(): { token: string; dbId: string } {
   const token = process.env.NOTION_TOKEN;
   const dbId = process.env.NOTION_ROSTER_DB_ID;
   if (!token || !dbId) {
-    throw new Error(
-      "Notion sync not configured: set NOTION_TOKEN and NOTION_ROSTER_DB_ID.",
-    );
+    throw new Error("Notion sync not configured: set NOTION_TOKEN and NOTION_ROSTER_DB_ID.");
   }
   return { token, dbId };
 }
@@ -48,13 +46,18 @@ export function isNotionConfigured(): boolean {
 
 // --- property extractors (property NAMES must match Notion exactly) ---
 const rich = (p: any) =>
-  (p?.rich_text ?? []).map((t: any) => t.plain_text).join("").trim();
+  (p?.rich_text ?? [])
+    .map((t: any) => t.plain_text)
+    .join("")
+    .trim();
 const email = (p: any) => (p?.email ?? "").trim().toLowerCase();
 const select = (p: any) => p?.select?.name ?? null;
 const titleP = (p: any) =>
-  (p?.title ?? []).map((t: any) => t.plain_text).join("").trim();
-const multi = (p: any): string[] =>
-  (p?.multi_select ?? []).map((s: any) => s.name);
+  (p?.title ?? [])
+    .map((t: any) => t.plain_text)
+    .join("")
+    .trim();
+const multi = (p: any): string[] => (p?.multi_select ?? []).map((s: any) => s.name);
 
 function mapPage(page: any): RosterRecord | null {
   const props = page.properties ?? {};
@@ -74,9 +77,9 @@ function mapPage(page: any): RosterRecord | null {
   if (PLACEHOLDER_NAMES.has(preferred.toLowerCase())) preferred = "";
   const first = rich(props["First Name"]);
   const last = rich(props["Last Name"]);
-  const name = preferred || `${first} ${last}`.trim() || titleP(props["Name"]);
+  const name = preferred || `${first} ${last}`.trim() || titleP(props.Name);
 
-  const teamRaw: string[] = multi(props["Team"]); // e.g. ["Events","Executive"]
+  const teamRaw: string[] = multi(props.Team); // e.g. ["Events","Executive"]
   const isExec = teamRaw.map((t) => t.toLowerCase()).includes("executive");
   // Functional teams = Team minus "Executive". "First Year Reps" is a cohort tag, not a
   // functional team — First Year Reps also carry their embedded team (e.g. Outreach), so we
@@ -88,8 +91,7 @@ function mapPage(page: any): RosterRecord | null {
     .filter((t) => t.toLowerCase() !== "executive")
     .sort(
       (a, b) =>
-        (COHORT_TAGS.has(a.toLowerCase()) ? 1 : 0) -
-        (COHORT_TAGS.has(b.toLowerCase()) ? 1 : 0),
+        (COHORT_TAGS.has(a.toLowerCase()) ? 1 : 0) - (COHORT_TAGS.has(b.toLowerCase()) ? 1 : 0),
     );
 
   const studentEmail = email(props["Student Email"]) || null;
@@ -101,9 +103,7 @@ function mapPage(page: any): RosterRecord | null {
   // Work) — they may sign in with any of them via Google/Microsoft.
   const matchEmails = [
     ...new Set(
-      [studentEmail, preferredEmail, personalEmail, workEmail].filter(
-        (e): e is string => !!e,
-      ),
+      [studentEmail, preferredEmail, personalEmail, workEmail].filter((e): e is string => !!e),
     ),
   ];
 
@@ -122,27 +122,20 @@ function mapPage(page: any): RosterRecord | null {
   };
 }
 
-async function queryPage(
-  token: string,
-  dbId: string,
-  cursor: string | undefined,
-): Promise<any> {
+async function queryPage(token: string, dbId: string, cursor: string | undefined): Promise<any> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), NOTION_TIMEOUT_MS);
   try {
-    const res = await fetch(
-      `https://api.notion.com/v1/databases/${dbId}/query`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Notion-Version": NOTION_VERSION,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(cursor ? { start_cursor: cursor } : {}),
-        signal: controller.signal,
+    const res = await fetch(`https://api.notion.com/v1/databases/${dbId}/query`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Notion-Version": NOTION_VERSION,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify(cursor ? { start_cursor: cursor } : {}),
+      signal: controller.signal,
+    });
     if (!res.ok) {
       throw new Error(`Notion query failed: ${res.status} ${await res.text()}`);
     }

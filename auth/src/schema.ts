@@ -13,12 +13,7 @@
  * The `jwks` table is managed by the Better Auth JWT plugin (it stores the Ed25519
  * signing keypair). We only declare it so drizzle-kit creates/migrates it.
  */
-import {
-  pgTable,
-  text,
-  boolean,
-  timestamp,
-} from "drizzle-orm/pg-core";
+import { boolean, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),

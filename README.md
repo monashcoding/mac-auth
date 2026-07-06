@@ -340,6 +340,25 @@ timestamps stay stable — otherwise a rebuild makes the drizzle migrator re-run
 already-applied migrations against the live DB and crash. After changing `schema.ts`, run
 `npm run db:generate` and **commit** the new migration. (`auth/dist/` stays gitignored.)
 
+### Linting & CI
+
+Code quality is enforced by [Biome](https://biomejs.dev) (lint + format) and GitHub Actions.
+Run the same checks CI runs before you push:
+
+```bash
+cd auth
+npm run lint       # biome check (formatting + lint)
+npm run lint:fix   # auto-fix formatting / imports / safe lint issues
+npm run typecheck  # tsc --noEmit
+npm run ci         # lint + typecheck together (what the CI gate runs)
+```
+
+Every push and PR to `main` runs `.github/workflows/ci.yml`: **lint → typecheck → build →
+docker build**. Since Dokploy auto-deploys from `main`, a red CI is your signal that the
+deploy would ship broken — fix it before merging. `noExplicitAny` at the Notion API
+boundary is intentionally a non-blocking warning. Dependabot opens weekly dependency PRs;
+CI verifies each one still builds before you merge.
+
 ---
 
 ## Handover checklist

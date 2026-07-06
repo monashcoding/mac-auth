@@ -5,9 +5,10 @@
  * parser — Better Auth needs the raw request body. Only routes declared after it use
  * express.json().
  */
-import express from "express";
+
+import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
 import cors from "cors";
-import { toNodeHandler, fromNodeHeaders } from "better-auth/node";
+import express from "express";
 import { auth } from "./auth.js";
 import { db } from "./db.js";
 import { runRosterSync, scheduleRosterSync } from "./sync/index.js";
@@ -40,8 +41,7 @@ function isAllowedOrigin(origin: string): boolean {
     const url = new URL(origin);
     return (
       url.protocol === "https:" &&
-      (url.hostname === "monashcoding.com" ||
-        url.hostname.endsWith(".monashcoding.com"))
+      (url.hostname === "monashcoding.com" || url.hostname.endsWith(".monashcoding.com"))
     );
   } catch {
     return false;
