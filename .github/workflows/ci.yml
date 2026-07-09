@@ -1,8 +1,8 @@
 name: CI
 
-# Gate every push and PR to main. Dokploy auto-deploys from main, so this is the
-# safety net in front of it: if lint / typecheck / build / docker fail, the code
-# never reaches production green.
+# Gate every push and PR to main, then deploy. On a push to main, the `deploy` job
+# triggers Dokploy's webhook ONLY after lint / typecheck / build / docker all pass —
+# so broken code never reaches production. PRs run the checks but never deploy.
 on:
   push:
     branches: [main]
@@ -60,3 +60,26 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy (Dokploy webhook)
+    # Only after BOTH gates pass, and only on a real push to main — never on PRs or forks.
+    needs: [check, docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Dokploy redeploy
+        env:
+          # Dokploy per-app deploy webhook. Set in repo Settings → Secrets and variables →
+          # Actions → New repository secret named DOKPLOY_DEPLOY_WEBHOOK. Never commit it.
+          WEBHOOK: ${{ secrets.DOKPLOY_DEPLOY_WEBHOOK }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "::warning::DOKPLOY_DEPLOY_WEBHOOK secret is not set — skipping deploy. \
+          Add it in repo Settings → Secrets → Actions to enable autodeploy."
+            exit 0
+          fi
+          echo "Checks passed — triggering Dokploy redeploy…"
+          # -f: fail on HTTP >=400; --retry: survive a transient blip. Dokploy accepts POST.
+          curl -fsS --retry 3 --retry-delay 5 -X POST "$WEBHOOK"
+          echo "Dokploy deploy triggered."
