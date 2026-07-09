@@ -183,6 +183,9 @@ export const auth = betterAuth({
           return {
             macUserId: user.id,
             email: user.email,
+            // Display name from the OAuth profile (Google/Microsoft). Always present, so
+            // apps can show a real name instead of falling back to the email.
+            name: user.name,
             roles: mergeRoles(base, derived),
             team,
             ver: 1,

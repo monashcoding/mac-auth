@@ -18,7 +18,7 @@ data by the user's stable `macUserId`.
 ```
  User ─sign in─▶ auth.monashcoding.com ─Google/Microsoft─▶ session cookie (.monashcoding.com)
                                                                     │
- Your app ◀─ JWT { macUserId, email, roles, team } ◀─ GET /api/auth/token ◀┘
+ Your app ◀─ JWT { macUserId, email, name, roles, team } ◀─ GET /api/auth/token ◀┘
     └─ verifies the JWT locally (jose + published JWKS) — no call back to auth per request
     └─ stores/loads its data keyed by macUserId
 ```
@@ -61,6 +61,7 @@ Every token your app receives carries exactly these claims:
 {
   "macUserId": "<stable per-person id>",
   "email": "<user email>",
+  "name": "<display name>",
   "roles": ["member", "committee", "exec"],
   "team": "Events",
   "ver": 1,
@@ -72,6 +73,8 @@ Every token your app receives carries exactly these claims:
 
 - **`macUserId`** — the canonical, stable identifier for a person. Use it as the foreign key
   in your own tables. **Never key data by email** (emails change).
+- **`name`** — the user's display name from their Google/Microsoft profile. Always present, so
+  you can show a real name instead of the email.
 - **`roles`** — a string array. `member` is the baseline for anyone signed in. `committee` is
   added for anyone on the central committee roster (curated in Notion), `exec` for execs, and
   `admin` for infra superusers (env allowlist, **not** from Notion). Gate committee-only
@@ -108,6 +111,7 @@ const JWKS = createRemoteJWKSet(new URL(`${AUTH_URL}/api/auth/jwks`));
 export interface MacClaims {
   macUserId: string;
   email: string;
+  name: string;
   roles: string[];
   team: string | null;
   ver: number;
@@ -127,6 +131,7 @@ export async function verifyMacToken(token: string): Promise<MacClaims> {
   return {
     macUserId: payload.macUserId as string,
     email: payload.email as string,
+    name: (payload.name as string) ?? "",
     roles: (payload.roles as string[]) ?? [],
     team: (payload.team as string | null) ?? null,
     ver: (payload.ver as number) ?? 1,
@@ -183,7 +188,7 @@ import { verifyMacToken } from "./verify";
 
 const token = req.headers.authorization?.replace("Bearer ", "");
 try {
-  const claims = await verifyMacToken(token);   // { macUserId, email, roles, team, ver }
+  const claims = await verifyMacToken(token);   // { macUserId, email, name, roles, team, ver }
   // ... proceed as this user
 } catch {
   return res.status(401).end();                 // invalid or expired token

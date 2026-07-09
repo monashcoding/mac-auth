@@ -106,6 +106,7 @@ Apps can rely on exactly these claims (plus standard `sub`, `iat`):
 {
   "macUserId": "<user.id>",
   "email": "<user.email>",
+  "name": "<display name>",
   "roles": ["member", "committee", "exec"],
   "team": "Events",
   "ver": 1,
@@ -117,6 +118,8 @@ Apps can rely on exactly these claims (plus standard `sub`, `iat`):
 
 - Algorithm: **EdDSA (Ed25519)**, signed with the key published at `/api/auth/jwks`.
 - Access-token lifetime: **15 minutes**.
+- `name` is the display name from the user's OAuth profile (Google/Microsoft) — always present,
+  so apps can show a real name instead of the email.
 - `roles` is the union of the user's base roles (`member`) and roles **derived** from the
   committee roster at mint time: `committee` (on the roster), `exec` (`"Executive"` in their
   Notion Team), and `admin` (env allowlist, not from Notion). See [Committee roster](#committee-roster).
@@ -129,7 +132,7 @@ Apps can rely on exactly these claims (plus standard `sub`, `iat`):
 
 Copy [`examples/verify.ts`](examples/verify.ts) into the app (only dependency: `jose`).
 It fetches and caches the JWKS with `createRemoteJWKSet` and checks `iss`, `aud`, and
-`exp`, returning typed `{ macUserId, email, roles, team, ver }` claims. No per-request call
+`exp`, returning typed `{ macUserId, email, name, roles, team, ver }` claims. No per-request call
 to this service.
 
 ---
@@ -209,7 +212,7 @@ This is the full recipe for making any MAC app use this service as its login. Th
 ```
  User ─sign in─▶ auth.monashcoding.com ─Google/Microsoft─▶ shared session cookie (.monashcoding.com)
                                                                      │
- Your app ◀─ JWT {macUserId,email,roles,team} ◀─ GET /api/auth/token ◀─┘
+ Your app ◀─ JWT {macUserId,email,name,roles,team} ◀─ GET /api/auth/token ◀─┘
     └─ verifies the JWT locally (jose + JWKS) — no call back to auth per request
     └─ stores/loads its data keyed by macUserId
 ```
@@ -264,7 +267,7 @@ import { verifyMacToken } from "./verify";   // examples/verify.ts
 
 const auth = req.headers.authorization?.replace("Bearer ", "");
 const claims = await verifyMacToken(auth);   // throws if invalid/expired
-// claims: { macUserId, email, roles, team, ver }
+// claims: { macUserId, email, name, roles, team, ver }
 ```
 
 Set `AUTH_URL=https://auth.monashcoding.com` in the app's env (verify.ts reads it).

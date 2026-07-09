@@ -20,6 +20,8 @@ const JWKS = createRemoteJWKSet(new URL(`${AUTH_URL}/api/auth/jwks`));
 export interface MacClaims {
   macUserId: string;
   email: string;
+  /** Display name from the user's OAuth profile (Google/Microsoft). */
+  name: string;
   roles: string[];
   /** Functional team (e.g. "Events"), or null if the person isn't on the committee roster. */
   team: string | null;
@@ -40,6 +42,7 @@ export async function verifyMacToken(token: string): Promise<MacClaims> {
   return {
     macUserId: payload.macUserId as string,
     email: payload.email as string,
+    name: (payload.name as string) ?? "",
     roles: (payload.roles as string[]) ?? [],
     team: (payload.team as string | null) ?? null,
     ver: (payload.ver as number) ?? 1,
