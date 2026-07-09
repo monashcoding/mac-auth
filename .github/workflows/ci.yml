@@ -82,6 +82,17 @@ jobs:
             exit 0
           fi
           echo "Checks passed — triggering Dokploy redeploy…"
-          # -f: fail on HTTP >=400; --retry: survive a transient blip. Dokploy accepts POST.
-          curl -fsS --retry 3 --retry-delay 5 -X POST "$WEBHOOK"
+          # Dokploy's webhook matches the branch from the payload's `ref`, so send a
+          # minimal GitHub-style body (a bare POST yields {"message":"Branch Not Match"}
+          # and no deploy). -f fails the job on HTTP >=400; --retry rides out a blip.
+          resp=$(curl -fsS --retry 3 --retry-delay 5 -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"ref\":\"${GITHUB_REF}\"}" \
+            "$WEBHOOK")
+          echo "Dokploy response: $resp"
+          # Guard: a 200 with "Branch Not Match" means Dokploy silently skipped the deploy.
+          if echo "$resp" | grep -qi "not match\|error"; then
+            echo "::error::Dokploy did not deploy (response: $resp)"
+            exit 1
+          fi
           echo "Dokploy deploy triggered."
