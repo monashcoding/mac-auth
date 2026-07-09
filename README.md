@@ -159,6 +159,13 @@ membership list. Curate the committee once in Notion; removing someone there rev
 **Roles:** `committee` (present in the roster), `exec` (`"Executive"` in the person's Notion
 Team multi-select), `admin` (env `ADMIN_EMAILS`, independent of Notion).
 
+**Shared team accounts.** The team service inboxes (`events@`, `marketing@`, `recruitment@`,
+`sponsorship@`, `projects@monashcoding.com`) aren't people in the roster, so they're mapped to
+`committee` + their team in a static allowlist (`TEAM_ACCOUNTS` in
+[`auth/src/roster/derive.ts`](auth/src/roster/derive.ts)) — `recruitment@` → `People and Culture`.
+To add/rename one, edit that map and redeploy; no Notion or DB change needed. (`projects@` is also
+the infra account, so it additionally gets `admin` if listed in `ADMIN_EMAILS`.)
+
 **First-time setup (per environment):**
 
 1. Set `NOTION_TOKEN`, `NOTION_ROSTER_DB_ID`, `NOTION_VERSION`, and `ADMIN_EMAILS` (see the
