@@ -98,15 +98,23 @@ export const auth = betterAuth({
   },
 
   socialProviders: {
+    // `prompt: "select_account"` forces the provider's account chooser during the
+    // OAuth handshake so people with several signed-in accounts (e.g. a personal
+    // Gmail alongside their student one) consciously pick the right one, rather
+    // than the provider silently auto-selecting the wrong account. This only
+    // affects the OAuth step itself — it does NOT run when an existing MAC session
+    // is reused, so signed-in users are not re-prompted or logged out.
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID as string,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+      prompt: "select_account",
     },
     microsoft: {
       clientId: process.env.MICROSOFT_CLIENT_ID as string,
       clientSecret: process.env.MICROSOFT_CLIENT_SECRET as string,
       // "common" so personal Microsoft accounts (Hotmail/Outlook/Live) work too.
       tenantId: "common",
+      prompt: "select_account",
     },
   },
 
