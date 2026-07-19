@@ -8,7 +8,8 @@
  *
  * Option shapes here were verified against the installed better-auth@1.6.x types
  * (jwt plugin `jwt.definePayload`/`expirationTime`, `socialProviders.microsoft.tenantId`,
- * `advanced.crossSubDomainCookies`, `user.additionalFields`, `databaseHooks`).
+ * `advanced.crossSubDomainCookies`/`defaultCookieAttributes`,
+ * `user.additionalFields`, `databaseHooks`).
  */
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -18,6 +19,7 @@ import { claimsForEmail } from "./roster/lookup.js";
 import { schema } from "./schema.js";
 
 const baseURL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
+const isSecureAuthOrigin = baseURL.startsWith("https://");
 const audience = process.env.JWT_AUDIENCE ?? "mac-suite";
 
 // Any https app on a *.monashcoding.com subdomain is trusted by default. Better Auth
@@ -170,6 +172,19 @@ export const auth = betterAuth({
     crossSubDomainCookies: {
       enabled: true,
       domain: ".monashcoding.com",
+    },
+
+    // Local MAC apps start OAuth and fetch their resulting session/token from this
+    // production auth origin. Those are cross-site credentialed requests, so Better
+    // Auth's SameSite=Lax default prevents both the short-lived signed state cookie and
+    // the resulting session cookie from being stored/sent. SameSite=None requires Secure
+    // on the deployed HTTPS origin; retain Lax/non-Secure for a plain-HTTP local auth server.
+    // HttpOnly keeps the cookies inaccessible to application JavaScript. Better Auth's CSRF
+    // and trusted-origin checks remain enabled and CORS only reflects allowed origins.
+    defaultCookieAttributes: {
+      httpOnly: true,
+      secure: isSecureAuthOrigin,
+      sameSite: isSecureAuthOrigin ? "none" : "lax",
     },
   },
 
