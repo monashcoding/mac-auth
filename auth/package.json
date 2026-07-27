@@ -22,7 +22,7 @@
     "auth:generate": "better-auth generate --config src/auth.ts --output src/schema.ts -y"
   },
   "dependencies": {
-    "better-auth": "^1.6.9",
+    "better-auth": "^1.6.25",
     "cors": "^2.8.6",
     "drizzle-orm": "^0.45.2",
     "express": "^4.21.2",
@@ -30,13 +30,13 @@
     "postgres": "^3.4.5"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.2",
+    "@biomejs/biome": "2.5.5",
     "@types/cors": "^2.8.19",
     "@types/express": "^4.17.21",
     "@types/node": "^22.10.0",
     "@types/node-cron": "^3.0.11",
     "drizzle-kit": "^0.31.4",
-    "tsx": "^4.19.2",
+    "tsx": "^4.23.1",
     "typescript": "^5.7.2"
   }
 }
